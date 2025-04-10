@@ -2,7 +2,7 @@
 
 This project serves as the admin and manager portal for the Zalo UTE application, built using **Flutter**. The portal provides various management features and functionalities for administrators and managers. For the backend API repository that supports the portal, refer to the link below:
 
-**API Repository**: [Zalo UTE API](https://github.com/The-Cookies-Team/Realtime-Chat-App-API)
+**API Repository**: [FastFood API](https://github.com/phatem1811/Project_FastFood_KhoaLuan)
 
 ---
 
@@ -24,7 +24,7 @@ flutter pub get
 Example:
 
 ```dart
-static const String remoteUrl = 'http://localhost:7979';
+static const String remoteUrl = 'http://localhost:8080';
 ```
 
 ### Starting the server

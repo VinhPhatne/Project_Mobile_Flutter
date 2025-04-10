@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
-import 'home_screen.dart'; // Import màn hình thông báo
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminDashboard extends StatelessWidget {
+  Future<void> _logout(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token'); // Xóa token
+    Navigator.pushReplacementNamed(context, '/login'); // Chuyển về LoginScreen
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -9,7 +15,7 @@ class AdminDashboard extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.red, // Màu đỏ giống phong cách KFC
         title: Text(
-          'Quản lý cửa hàng KFC',
+          'Quản lý cửa hàng',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -22,11 +28,7 @@ class AdminDashboard extends StatelessWidget {
               color: Colors.white,
             ),
             onPressed: () {
-              // Chuyển hướng đến màn hình thông báo
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => HomeScreen()),
-              );
+              Navigator.pushNamed(context, '/notification');
             },
           ),
         ],
@@ -42,7 +44,6 @@ class AdminDashboard extends StatelessWidget {
               description: 'Xem và xử lý các đơn hàng từ khách hàng.',
               icon: Icons.fastfood,
               onTap: () {
-                // Placeholder: Chuyển đến màn hình quản lý đơn hàng
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Chuyển đến Quản lý đơn hàng')),
                 );
@@ -56,7 +57,6 @@ class AdminDashboard extends StatelessWidget {
               description: 'Thêm, sửa, xóa các món ăn trong menu.',
               icon: Icons.menu_book,
               onTap: () {
-                // Placeholder: Chuyển đến màn hình quản lý sản phẩm
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Chuyển đến Quản lý sản phẩm')),
                 );
@@ -70,7 +70,6 @@ class AdminDashboard extends StatelessWidget {
               description: 'Quản lý thông tin và lịch làm việc của nhân viên.',
               icon: Icons.people,
               onTap: () {
-                // Placeholder: Chuyển đến màn hình quản lý nhân viên
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Chuyển đến Quản lý nhân viên')),
                 );
@@ -84,11 +83,30 @@ class AdminDashboard extends StatelessWidget {
               description: 'Xem báo cáo doanh thu và lợi nhuận.',
               icon: Icons.attach_money,
               onTap: () {
-                // Placeholder: Chuyển đến màn hình quản lý doanh thu
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Chuyển đến Quản lý doanh thu')),
                 );
               },
+            ),
+            SizedBox(height: 16),
+            // Nút đăng xuất
+            ElevatedButton(
+              onPressed: () => _logout(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                padding: EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text(
+                'Đăng xuất',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
@@ -116,7 +134,6 @@ class AdminDashboard extends StatelessWidget {
         ],
         currentIndex: 0, // Mặc định chọn tab Trang chủ
         onTap: (index) {
-          // Placeholder: Xử lý khi nhấn vào các tab
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Chuyển đến tab $index')),
           );

@@ -24,10 +24,11 @@ class MyApp extends StatelessWidget {
           bodySmall: TextStyle(fontSize: 12),
         ),
       ),
-      home: AdminDashboard(), // Đặt SplashScreen làm màn hình khởi động
+      home: SplashScreen(),
       routes: {
         '/login': (context) => LoginScreen(),
-        '/home': (context) => HomeScreen(),
+        '/home': (context) => AdminDashboard(),
+        '/notification': (context) => HomeScreen(),
         '/forgot-password': (context) => Scaffold(
               appBar: AppBar(title: Text('Quên mật khẩu')),
               body: Center(child: Text('Màn hình quên mật khẩu')),

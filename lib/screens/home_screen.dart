@@ -147,9 +147,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       IconButton(
                         icon: Icon(Icons.arrow_back,
-                            color: Colors.black,
-                            size: 24), // Đổi màu icon để dễ nhìn
-                        onPressed: _logout,
+                            color: Colors.black, size: 24),
+                        onPressed: () {
+                          Navigator.pop(context); // Quay lại AdminDashboard
+                        },
                       ),
                       Expanded(
                         child: Text(
@@ -161,6 +162,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           textAlign: TextAlign.center,
                         ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.logout, color: Colors.black, size: 24),
+                        onPressed: _logout,
                       ),
                     ],
                   ),
@@ -245,8 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Đánh dấu đã đọc',
                       style: TextStyle(
                         fontSize: 16,
-                        color: Colors
-                            .white, // Giữ màu trắng để tương phản với nền nút
+                        color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -290,8 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Icon(
                 icon,
                 size: 20,
-                color:
-                    isActive ? Color(0xFF007AFF) : Colors.black, // Đổi màu icon
+                color: isActive ? Color(0xFF007AFF) : Colors.black,
               ),
               SizedBox(width: 5),
               Text(
@@ -331,12 +334,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNotificationItem(Notification item) {
-    print('Rendering notification: ${item.title}'); // Debug để kiểm tra render
+    print('Rendering notification: ${item.title}');
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 15, vertical: 10),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: Color(0xFFeee), width: 1),
+          bottom: notifications.indexOf(item) == notifications.length - 1
+              ? BorderSide.none // Bỏ border cho item cuối
+              : BorderSide(
+                  color: Colors.grey[300]!,
+                  width: 1.5,
+                ),
         ),
       ),
       child: Row(

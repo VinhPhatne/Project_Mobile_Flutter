@@ -292,7 +292,7 @@ class _LoginScreenState extends State<LoginScreen> {
           keyboardType: keyboardType,
           obscureText: obscureText,
           decoration: InputDecoration(
-            hintText: 'Nhập $label.toLowerCase()',
+            hintText: 'Nhập ${label.toLowerCase()}',
             hintStyle: TextStyle(color: Color(0xFF6b7280)),
             filled: true,
             fillColor: Colors.white,
