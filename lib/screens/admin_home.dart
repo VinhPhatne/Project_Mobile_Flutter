@@ -11,9 +11,9 @@ class AdminDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100], // Nền xám nhạt
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        backgroundColor: Colors.red, // Màu đỏ giống phong cách KFC
+        backgroundColor: Colors.red,
         title: Text(
           'Quản lý cửa hàng',
           style: TextStyle(
@@ -21,6 +21,7 @@ class AdminDashboard extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
+        automaticallyImplyLeading: false,
         actions: [
           IconButton(
             icon: Icon(
@@ -132,7 +133,7 @@ class AdminDashboard extends StatelessWidget {
             label: 'Tài khoản',
           ),
         ],
-        currentIndex: 0, // Mặc định chọn tab Trang chủ
+        currentIndex: 0,
         onTap: (index) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Chuyển đến tab $index')),
@@ -165,7 +166,7 @@ class AdminDashboard extends StatelessWidget {
               Icon(
                 icon,
                 size: 40,
-                color: Colors.red, // Màu đỏ giống phong cách KFC
+                color: Colors.red,
               ),
               SizedBox(width: 16),
               Expanded(

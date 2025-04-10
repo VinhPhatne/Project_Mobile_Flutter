@@ -78,6 +78,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final data = jsonDecode(response.body);
       final token = data['accountLogin']['access_token'];
+      final role = data['accountLogin']['account']['role'];
+
+      if (role != 1 && role != 2) {
+        throw Exception(
+            'Bạn không có quyền truy cập. Vui lòng liên hệ quản trị viên.');
+      }
 
       if (token != null) {
         final prefs = await SharedPreferences.getInstance();
@@ -91,6 +97,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (err is http.ClientException && err.toString().contains('response')) {
         final responseBody = jsonDecode(err.toString());
         errorMessage = responseBody['message'] ?? 'Đăng nhập thất bại.';
+      } else if (err is Exception) {
+        errorMessage = err.toString().replaceFirst('Exception: ', '');
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(errorMessage)),
@@ -222,7 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF222),
+                                  color: Color(0xFF929292),
                                 ),
                               ),
                               GestureDetector(
@@ -242,21 +250,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                           ),
                         ),
-                        IconButton(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/home');
-                          },
-                          icon: Icon(
-                            Icons.home,
-                            size: 30,
-                            color: Color(0xFF075eec),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            padding: EdgeInsets.all(10),
-                            shape: CircleBorder(),
-                            elevation: 3,
-                          ),
-                        ),
+                        // Đã bỏ IconButton với biểu tượng ngôi nhà
                       ],
                     ),
                   ),
