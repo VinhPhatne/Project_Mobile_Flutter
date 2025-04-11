@@ -51,6 +51,23 @@ class AdminDashboard extends StatelessWidget {
               },
             ),
             SizedBox(height: 16),
+            // Card: Xem chi tiết hóa đơn
+            _buildManagementCard(
+              context: context,
+              title: 'Xem chi tiết hóa đơn',
+              description:
+                  'Xem chi tiết hóa đơn với ID: 6768cff29bdb826320f612a1',
+              icon: Icons.receipt,
+              onTap: () {
+                // Điều hướng đến OrderDetailScreen với orderId cố định
+                Navigator.pushNamed(
+                  context,
+                  '/order-detail',
+                  arguments: {'orderId': '6768cff29bdb826320f612a1'},
+                );
+              },
+            ),
+            SizedBox(height: 16),
             // Card: Quản lý sản phẩm
             _buildManagementCard(
               context: context,

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/admin_home.dart';
+import 'screens/order_detail_screen.dart';
 
 void main() {
   runApp(MyApp());
@@ -37,6 +38,11 @@ class MyApp extends StatelessWidget {
               appBar: AppBar(title: Text('Đăng ký')),
               body: Center(child: Text('Màn hình đăng ký')),
             ),
+        '/order-detail': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments
+              as Map<String, dynamic>;
+          return OrderDetailScreen(orderId: args['orderId']);
+        },
       },
     );
   }
