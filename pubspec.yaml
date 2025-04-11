@@ -18,8 +18,9 @@ dependencies:
   fl_chart: ^0.69.0
   carousel_slider: ^5.0.0
   photo_view: ^0.15.0
-  fluttertoast: ^8.2.2
+  fluttertoast: ^8.2.12
   cupertino_icons: ^1.0.2
+  socket_io_client: ^3.1.1
 
 dev_dependencies:
   flutter_test:
