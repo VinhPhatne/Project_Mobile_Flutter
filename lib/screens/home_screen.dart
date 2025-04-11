@@ -1,5 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:intl/intl.dart';
+import '../models/review.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:fluttertoast/fluttertoast.dart';
+
+late IO.Socket socket;
 
 class Notification {
   final String id;
@@ -91,13 +99,84 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
+List<Review> reviews = [];
+
 class _HomeScreenState extends State<HomeScreen> {
   String activeTab = "orders"; // "orders" hoặc "reviews"
 
   @override
   void initState() {
     super.initState();
+    connectSocket();
     _checkLoginStatus();
+    // _loadReviews();
+  }
+
+  void connectSocket() {
+    socket = IO.io(
+      'http://localhost:8080', // hoặc IP máy chủ thật nếu chạy trên thiết bị thật
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .disableAutoConnect()
+          .build(),
+    );
+
+    socket.connect();
+
+    socket.onConnect((_) {
+      print("Socket connected ");
+    });
+
+    socket.on("review_notification", (data) {
+      final fullName = data['data']['review']['fullName'] ?? "Người dùng";
+
+      // Hiện thông báo toast
+      Fluttertoast.showToast(
+        msg: "Bạn nhận được một đánh giá mới từ $fullName!",
+        toastLength: Toast.LENGTH_LONG, // vẫn giữ là LONG (khoảng 3.5s)
+        gravity: ToastGravity.CENTER, // 👉 chuyển sang giữa màn hình
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
+        fontSize: 16.0,
+      );
+      // Cập nhật danh sách đánh giá
+      loadReviews();
+    });
+
+    socket.onDisconnect((_) {
+      print("Socket disconnected ");
+    });
+  }
+
+  Future<void> loadReviews() async {
+    try {
+      final result = await fetchReviewList();
+      setState(() {
+        reviews = result;
+      });
+    } catch (e) {
+      print("Lỗi khi tải reviews: $e");
+    }
+  }
+
+  @override
+  void dispose() {
+    socket.dispose();
+    super.dispose();
+  }
+
+  Future<List<Review>> fetchReviewList() async {
+    final response =
+        await http.get(Uri.parse('http://localhost:8080/v1/review/list'));
+
+    if (response.statusCode == 200) {
+      final decoded = json.decode(response.body);
+      final List<dynamic> jsonList =
+          decoded['review']; // 👈 lấy từ key 'review'
+      return jsonList.map((json) => Review.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load reviews');
+    }
   }
 
   Future<void> _checkLoginStatus() async {
@@ -118,9 +197,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // Tính số thông báo chưa đọc cho mỗi tab
   int get unreadOrdersCount =>
       mockOrderNotifications.where((notification) => !notification.read).length;
-  int get unreadReviewsCount => mockReviewNotifications
-      .where((notification) => !notification.read)
-      .length;
+  int get unreadReviewsCount =>
+      reviews.where((review) => !review.isRead).length;
 
   List<Notification> get notifications =>
       activeTab == "orders" ? mockOrderNotifications : mockReviewNotifications;
@@ -201,9 +279,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: ListView.builder(
                     padding: EdgeInsets.only(bottom: 80),
-                    itemCount: notifications.length + 1,
+                    itemCount: activeTab == 'reviews'
+                        ? reviews.length
+                        : notifications.length + 1,
                     itemBuilder: (context, index) {
-                      if (index == 0) {
+                      if (index == 0 && activeTab != 'reviews') {
                         return Padding(
                           padding: const EdgeInsets.all(15.0),
                           child: Text(
@@ -215,11 +295,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         );
                       }
-                      final notification = notifications[index - 1];
-                      return _buildNotificationItem(notification);
+
+                      if (activeTab == 'reviews') {
+                        final review = reviews[index];
+                        return _buildReviewItem(review);
+                      } else {
+                        final notification = notifications[index - 1];
+                        return _buildNotificationItem(notification);
+                      }
                     },
                   ),
-                ),
+                )
               ],
             ),
 
@@ -229,7 +315,39 @@ class _HomeScreenState extends State<HomeScreen> {
               left: 15,
               right: 15,
               child: ElevatedButton(
-                onPressed: () {},
+                onPressed: () async {
+                  try {
+                    final response = await http.patch(
+                      Uri.parse(
+                          'http://localhost:8080/v1/review/mark-all-read'),
+                    );
+
+                    if (response.statusCode == 200) {
+                      setState(() {
+                        reviews = reviews
+                            .map((review) => review.copyWith(isRead: true))
+                            .toList();
+                      });
+
+                      Fluttertoast.showToast(
+                        msg: "Tất cả đánh giá đã được đánh dấu là đã đọc",
+                        backgroundColor: Colors.green,
+                        toastLength:
+                            Toast.LENGTH_LONG, // vẫn giữ là LONG (khoảng 3.5s)
+                        gravity: ToastGravity.CENTER,
+                        textColor: Colors.white,
+                      );
+                    } else {
+                      Fluttertoast.showToast(
+                        msg: "Không thể cập nhật trạng thái đánh giá",
+                        backgroundColor: Colors.red,
+                        textColor: Colors.white,
+                      );
+                    }
+                  } catch (e) {
+                    print(e);
+                  }
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Color(0xFF007AFF),
                   padding: EdgeInsets.symmetric(vertical: 15),
@@ -257,7 +375,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-            ),
+            )
           ],
         ),
       ),
@@ -277,6 +395,15 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             activeTab = tabValue;
           });
+          if (tabValue == 'reviews') {
+            fetchReviewList().then((data) {
+              setState(() {
+                reviews = data;
+              });
+            }).catchError((error) {
+              print('Error loading reviews: $error');
+            });
+          }
         },
         child: Container(
           padding: EdgeInsets.symmetric(vertical: 15),
@@ -334,7 +461,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildNotificationItem(Notification item) {
-    print('Rendering notification: ${item.title}');
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 15, vertical: 10),
       decoration: BoxDecoration(
@@ -423,6 +549,120 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.black,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReviewItem(Review review) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+      decoration: BoxDecoration(
+        color: review.isRead == false
+            ? Colors.blue[50]
+            : Colors.white, // 💡 Màu nền nếu chưa đọc
+        border: Border(
+          bottom: BorderSide(color: Colors.grey[300]!, width: 1.5),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.star, color: Colors.orange, size: 30),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Tiêu đề
+                Text(
+                  'Bạn được 1 đánh giá mới từ ${review.fullName ?? "Người dùng"}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+                SizedBox(height: 6),
+
+                // Sản phẩm
+                Text.rich(
+                  TextSpan(
+                    text: 'Sản phẩm: ',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: review.product.name ?? "Không rõ",
+                        style: TextStyle(fontWeight: FontWeight.normal),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 4),
+
+                // Nội dung bình luận
+                Text.rich(
+                  TextSpan(
+                    text: 'Nội dung: ',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: '"${review.comment}"',
+                        style: TextStyle(fontWeight: FontWeight.normal),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 4),
+
+                // Đánh giá
+                Text.rich(
+                  TextSpan(
+                    text: 'Đánh giá: ',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: '${review.rating} ⭐',
+                        style: TextStyle(fontWeight: FontWeight.normal),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 4),
+
+                // Thời gian
+                Text.rich(
+                  TextSpan(
+                    text: 'Thời gian: ',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: DateFormat('dd/MM/yyyy – HH:mm')
+                            .format(review.createdAt),
+                        style: TextStyle(fontWeight: FontWeight.normal),
+                      ),
+                    ],
                   ),
                 ),
               ],
