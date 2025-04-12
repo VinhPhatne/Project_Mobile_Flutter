@@ -4,8 +4,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import '../models/review.dart';
+import '../models/OrderNotification .dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:fluttertoast/fluttertoast.dart';
+import 'order_detail_screen.dart';
 
 late IO.Socket socket;
 
@@ -66,40 +68,13 @@ final List<Notification> mockOrderNotifications = [
   ),
 ];
 
-// Mock data for "Đánh giá" (Reviews)
-final List<Notification> mockReviewNotifications = [
-  Notification(
-    id: "5",
-    title: "Cloud Nine Restaurant",
-    discount: "10%",
-    date: "01/04/2025",
-    time: "14:00:00",
-    read: false,
-  ),
-  Notification(
-    id: "6",
-    title: "Moonlight Sky Bar",
-    discount: "10%",
-    date: "01/04/2025",
-    time: "14:00:00",
-    read: false,
-  ),
-  Notification(
-    id: "7",
-    title: "Link Bistro Café",
-    discount: "10%",
-    date: "01/04/2025",
-    time: "14:00:00",
-    read: true,
-  ),
-];
-
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
 
 List<Review> reviews = [];
+List<OrderNotification> orderNotifications = [];
 
 class _HomeScreenState extends State<HomeScreen> {
   String activeTab = "orders"; // "orders" hoặc "reviews"
@@ -107,9 +82,18 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    if (activeTab == 'orders') {
+      fetchOrderNotificationList().then((data) {
+        setState(() {
+          orderNotifications = data;
+        });
+      }).catchError((error) {
+        print('Error loading order notifications: $error');
+      });
+    }
     connectSocket();
     _checkLoginStatus();
-    // _loadReviews();
+
   }
 
   void connectSocket() {
@@ -127,25 +111,52 @@ class _HomeScreenState extends State<HomeScreen> {
       print("Socket connected ");
     });
 
+    socket.on("billCreated", (data) {
+      final message = "Bạn có một đơn hàng mới";
+      Fluttertoast.showToast(
+        msg: message,
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.CENTER,
+        backgroundColor: Colors.blue,
+        textColor: Colors.white,
+        fontSize: 16.0,
+      );
+      loadOrderNotifications();
+    });
     socket.on("review_notification", (data) {
       final fullName = data['data']['review']['fullName'] ?? "Người dùng";
 
       // Hiện thông báo toast
       Fluttertoast.showToast(
         msg: "Bạn nhận được một đánh giá mới từ $fullName!",
-        toastLength: Toast.LENGTH_LONG, // vẫn giữ là LONG (khoảng 3.5s)
-        gravity: ToastGravity.CENTER, // 👉 chuyển sang giữa màn hình
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.CENTER,
         backgroundColor: Colors.green,
         textColor: Colors.white,
         fontSize: 16.0,
       );
-      // Cập nhật danh sách đánh giá
+
       loadReviews();
     });
 
     socket.onDisconnect((_) {
       print("Socket disconnected ");
     });
+
+    socket.onError((error) {
+      print("Socket error: $error");
+    });
+  }
+
+  Future<void> loadOrderNotifications() async {
+    try {
+      final result = await fetchOrderNotificationList();
+      setState(() {
+        orderNotifications = result;
+      });
+    } catch (e) {
+      print("Lỗi khi tải order notifications: $e");
+    }
   }
 
   Future<void> loadReviews() async {
@@ -179,6 +190,38 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<List<OrderNotification>> fetchOrderNotificationList() async {
+    final response = await http.get(
+      Uri.parse('http://localhost:8080/v1/order-notify/list'),
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> jsonList = json.decode(response.body);
+      return jsonList.map((json) => OrderNotification.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to load order notifications');
+    }
+  }
+
+  Future<void> updateNotificationStatus(String notificationId) async {
+    final url =
+        'http://localhost:8080/v1/order-notify/update-isRead/$notificationId';
+
+    try {
+      final response = await http.patch(
+        Uri.parse(url),
+      );
+
+      if (response.statusCode == 200) {
+        print('Notification updated successfully');
+      } else {
+        print('Failed to update notification');
+      }
+    } catch (e) {
+      print('Error updating notification: $e');
+    }
+  }
+
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
@@ -195,13 +238,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // Tính số thông báo chưa đọc cho mỗi tab
-  int get unreadOrdersCount =>
-      mockOrderNotifications.where((notification) => !notification.read).length;
+  int get unreadOrdersCount => orderNotifications
+      .where((orderNotification) => !orderNotification.isRead)
+      .length;
   int get unreadReviewsCount =>
       reviews.where((review) => !review.isRead).length;
-
-  List<Notification> get notifications =>
-      activeTab == "orders" ? mockOrderNotifications : mockReviewNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -281,7 +322,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: EdgeInsets.only(bottom: 80),
                     itemCount: activeTab == 'reviews'
                         ? reviews.length
-                        : notifications.length + 1,
+                        : orderNotifications.length + 1,
                     itemBuilder: (context, index) {
                       if (index == 0 && activeTab != 'reviews') {
                         return Padding(
@@ -300,8 +341,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         final review = reviews[index];
                         return _buildReviewItem(review);
                       } else {
-                        final notification = notifications[index - 1];
-                        return _buildNotificationItem(notification);
+                        if (index - 1 < orderNotifications.length) {
+                          final orderNotification =
+                              orderNotifications[index - 1];
+                          return _buildNotificationItem(orderNotification);
+                        } else {
+                          return SizedBox(); // fallback tránh lỗi
+                        }
                       }
                     },
                   ),
@@ -316,36 +362,68 @@ class _HomeScreenState extends State<HomeScreen> {
               right: 15,
               child: ElevatedButton(
                 onPressed: () async {
-                  try {
-                    final response = await http.patch(
-                      Uri.parse(
-                          'http://localhost:8080/v1/review/mark-all-read'),
+                  String url = '';
+                  String successMessage = '';
+                  String errorMessage = '';
+
+                  if (activeTab == 'reviews') {
+                    url = 'http://localhost:8080/v1/review/mark-all-read';
+                    successMessage =
+                        'Tất cả đánh giá đã được đánh dấu là đã đọc';
+                    errorMessage = 'Không thể cập nhật trạng thái đánh giá';
+                  } else if (activeTab == 'orders') {
+                    url =
+                        'http://localhost:8080/v1/order-notify/update-all-isRead';
+                    successMessage =
+                        'Tất cả thông báo đơn hàng đã được đánh dấu là đã đọc';
+                    errorMessage =
+                        'Không thể cập nhật trạng thái thông báo đơn hàng';
+                  } else {
+                    Fluttertoast.showToast(
+                      msg: "Tab không hợp lệ",
+                      backgroundColor: Colors.orange,
+                      textColor: Colors.white,
                     );
+                    return;
+                  }
+
+                  try {
+                    final response = await http.patch(Uri.parse(url));
 
                     if (response.statusCode == 200) {
                       setState(() {
-                        reviews = reviews
-                            .map((review) => review.copyWith(isRead: true))
-                            .toList();
+                        if (activeTab == 'reviews') {
+                          reviews = reviews
+                              .map((review) => review.copyWith(isRead: true))
+                              .toList();
+                        } else if (activeTab == 'orders') {
+                          orderNotifications = orderNotifications
+                              .map((notify) => notify.copyWith(isRead: true))
+                              .toList();
+                        }
                       });
 
                       Fluttertoast.showToast(
-                        msg: "Tất cả đánh giá đã được đánh dấu là đã đọc",
+                        msg: successMessage,
                         backgroundColor: Colors.green,
-                        toastLength:
-                            Toast.LENGTH_LONG, // vẫn giữ là LONG (khoảng 3.5s)
+                        toastLength: Toast.LENGTH_LONG,
                         gravity: ToastGravity.CENTER,
                         textColor: Colors.white,
                       );
                     } else {
                       Fluttertoast.showToast(
-                        msg: "Không thể cập nhật trạng thái đánh giá",
+                        msg: errorMessage,
                         backgroundColor: Colors.red,
                         textColor: Colors.white,
                       );
                     }
                   } catch (e) {
-                    print(e);
+                    print("Lỗi gọi API: $e");
+                    Fluttertoast.showToast(
+                      msg: "Lỗi mạng, vui lòng thử lại",
+                      backgroundColor: Colors.red,
+                      textColor: Colors.white,
+                    );
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -375,7 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -389,12 +467,14 @@ class _HomeScreenState extends State<HomeScreen> {
     required int unreadCount,
   }) {
     final isActive = activeTab == tabValue;
+
     return Expanded(
       child: GestureDetector(
         onTap: () {
           setState(() {
             activeTab = tabValue;
           });
+
           if (tabValue == 'reviews') {
             fetchReviewList().then((data) {
               setState(() {
@@ -402,6 +482,14 @@ class _HomeScreenState extends State<HomeScreen> {
               });
             }).catchError((error) {
               print('Error loading reviews: $error');
+            });
+          } else if (tabValue == 'orders') {
+            fetchOrderNotificationList().then((data) {
+              setState(() {
+                orderNotifications = data;
+              });
+            }).catchError((error) {
+              print('Error loading order notifications: $error');
             });
           }
         },
@@ -460,101 +548,124 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildNotificationItem(Notification item) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: notifications.indexOf(item) == notifications.length - 1
-              ? BorderSide.none // Bỏ border cho item cuối
-              : BorderSide(
-                  color: Colors.grey[300]!,
-                  width: 1.5,
-                ),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Color(0xFFE6F0FA),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.campaign_outlined,
-                  size: 24,
-                  color: Color(0xFFFF3B30),
-                ),
-              ),
-              if (!item.read)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: Color(0xFFFF3B30),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                  ),
-                ),
-            ],
+  Widget _buildNotificationItem(OrderNotification item) {
+    final DateFormat formatter = DateFormat('HH:mm dd/MM/yyyy');
+
+    return GestureDetector(
+      onTap: () async {
+        print("Tapped on notification");
+
+        // Gọi API cập nhật trạng thái isRead
+        await updateNotificationStatus(item.id);
+
+        // Điều hướng đến chi tiết đơn hàng và chờ người dùng quay lại
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => OrderDetailScreen(orderId: item.bill.id),
           ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        );
+
+        // Sau khi quay về từ OrderDetailScreen, gọi lại fetch để làm mới danh sách
+        // fetchOrderNotificationList(); // Gọi lại API để cập nhật UI
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+        decoration: const BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
               children: [
-                Text(
-                  item.title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE6F0FA),
+                    shape: BoxShape.circle,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  child: const Icon(
+                    Icons.shopping_cart_outlined,
+                    size: 22,
+                    color: Color(0xFF007AFF),
+                  ),
                 ),
-                if (item.description != null) ...[
-                  SizedBox(height: 4),
-                  Text(
-                    item.description!,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black,
+                if (!item.isRead)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF3B30),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-                SizedBox(height: 4),
-                Text(
-                  'Giảm ${item.discount}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.black,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  '${item.time} ${item.date}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.black,
-                  ),
-                ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.message,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.receipt_long,
+                          size: 16, color: Colors.black54),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Hóa đơn: ${item.bill.id}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.attach_money,
+                          size: 16, color: Colors.black54),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Tổng tiền: ${item.bill.totalPrice.toStringAsFixed(0)}đ',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    formatter.format(item.createdAt),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
       ),
     );
   }

@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'dart:ui' as ui;
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:fluttertoast/fluttertoast.dart';
 
 void main() {
   runApp(MyApp());
@@ -39,10 +41,72 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool isLoading = true;
   String? error;
 
+  late IO.Socket socket;
+  String orderStatus = "Chưa thanh toán"; // Initial status
+  int currentState = 0;
+
   @override
   void initState() {
     super.initState();
+
+    socket = IO.io(
+      'http://localhost:8080',
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .disableAutoConnect()
+          .build(),
+    );
+
+    // Connect the socket
+    socket.connect();
+
+    socket.on('order_status_updated', (data) {
+      if (!mounted) return;
+      setState(() {
+        order?['state'] = data['newState']; // ← CẬP NHẬT LẠI STATE TRONG ORDER
+        orderStatus = data['newState'].toString();
+        currentState = int.tryParse(orderStatus) ?? 0;
+      });
+
+      Fluttertoast.showToast(
+        msg: "Trạng thái đơn hàng đã được cập nhật thành công!",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.CENTER,
+        backgroundColor: Colors.blue,
+        textColor: Colors.white,
+        fontSize: 16.0,
+      );
+    });
+
+    // Fetch order details
     fetchOrder();
+  }
+
+  @override
+  void dispose() {
+    // Disconnect the socket when the widget is disposed
+    socket.disconnect();
+    super.dispose();
+  }
+
+  void updateOrderStatus(String orderId) {
+    int newState = currentState + 1;
+
+    final payload = {
+      'billId': orderId,
+      'state': newState,
+    };
+
+    socket.emit('updateOrderStatus', payload);
+  }
+
+  void cancelOrder(String orderId) {
+    final payload = {
+      'billId': orderId,
+      'state': -1, // Trạng thái hủy đơn
+    };
+
+    socket.emit('updateOrderStatus', payload);
   }
 
   Future<void> fetchOrder() async {
@@ -50,9 +114,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       final response = await http.get(
         Uri.parse('http://localhost:8080/v1/bill/get/${widget.orderId}'),
       );
+
       if (response.statusCode == 200) {
+        final data = jsonDecode(response.body)['data'];
+
         setState(() {
-          order = jsonDecode(response.body)['data'];
+          order = data;
+          orderStatus = data['state'].toString(); // để hiển thị
+          currentState = data['state'] is int
+              ? data['state']
+              : int.tryParse(data['state']) ?? 0; // để dùng logic
           isLoading = false;
         });
       } else {
@@ -68,9 +139,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Widget getOrderStatusLine(int state) {
+    if (state == -1) {
+      return Container(
+        padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        alignment: Alignment.center,
+        child: Text(
+          'Đơn hàng đã bị hủy',
+          style: TextStyle(
+            color: Colors.red,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
+
     final stages = [
       Stage(label: 'Đang xử lí', state: 1),
-      Stage(label: 'Đang thưc hiện', state: 2),
+      Stage(label: 'Đang thực hiện', state: 2),
       Stage(label: 'Đang giao hàng', state: 3),
       Stage(label: 'Hoàn thành', state: 4),
     ];
@@ -215,51 +301,89 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         padding: EdgeInsets.all(16),
         children: [
           Card(
-            elevation: 2,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Thông tin đơn hàng',
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87),
-                  ),
-                  SizedBox(height: 8),
-                  Text('👤 ${order!['fullName']}',
-                      style: TextStyle(fontSize: 16, color: Colors.black54)),
-                  Text('📞 ${order!['phone_shipment']}',
-                      style: TextStyle(fontSize: 16, color: Colors.black54)),
-                  Text(
-                    '🚚 Phí vận chuyển: ${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(order!['ship'])}',
-                    style: TextStyle(fontSize: 16, color: Colors.black54),
-                  ),
-                  Text(
-                    '🎟 Voucher: ${order!['voucher'] != null ? order!['voucher']['code'] : 'Không có'} - ${order!['voucher'] != null ? NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(order!['voucher']['discount']) : '0đ'}',
-                    style: TextStyle(fontSize: 16, color: Colors.black54),
-                  ),
-                  Text(
-                    '💎 Điểm giảm giá: -${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(order!['pointDiscount'])}',
-                    style: TextStyle(fontSize: 16, color: Colors.black54),
-                  ),
-                  Text(
-                    '💳 Trạng thái: ${order!['isPaid'] ? '✅ Đã thanh toán' : '❌ Chưa thanh toán'}',
-                    style: TextStyle(fontSize: 16, color: Colors.black54),
-                  ),
-                  Text(
-                    '📌 Trạng thái giao hàng:',
-                    style: TextStyle(fontSize: 16, color: Colors.black54),
-                  ),
-                  getOrderStatusLine(order!['state']),
-                ],
-              ),
-            ),
-          ),
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Thông tin đơn hàng',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87),
+                    ),
+                    SizedBox(height: 8),
+                    Text('👤 ${order!['fullName']}',
+                        style: TextStyle(fontSize: 16, color: Colors.black54)),
+                    Text('📞 ${order!['phone_shipment']}',
+                        style: TextStyle(fontSize: 16, color: Colors.black54)),
+                    Text(
+                      '🚚 Phí vận chuyển: ${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(order!['ship'])}',
+                      style: TextStyle(fontSize: 16, color: Colors.black54),
+                    ),
+                    Text(
+                      '🎟 Voucher: ${order!['voucher'] != null ? order!['voucher']['code'] : 'Không có'} - ${order!['voucher'] != null ? NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(order!['voucher']['discount']) : '0đ'}',
+                      style: TextStyle(fontSize: 16, color: Colors.black54),
+                    ),
+                    Text(
+                      '💎 Điểm giảm giá: -${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(order!['pointDiscount'])}',
+                      style: TextStyle(fontSize: 16, color: Colors.black54),
+                    ),
+                    Text(
+                      '💳 Trạng thái: ${order!['isPaid'] ? '✅ Đã thanh toán' : '❌ Chưa thanh toán'}',
+                      style: TextStyle(fontSize: 16, color: Colors.black54),
+                    ),
+                    Text(
+                      '📌 Trạng thái giao hàng:',
+                      style: TextStyle(fontSize: 16, color: Colors.black54),
+                    ),
+                    getOrderStatusLine(order!['state']),
+
+                    // Thêm Row chứa 2 button
+                    SizedBox(
+                        height:
+                            16), // Khoảng cách giữa trạng thái giao hàng và các nút
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        ElevatedButton(
+                          onPressed: (currentState == 4 || currentState == -1)
+                              ? null // Vô hiệu hóa nếu state là 4 hoặc -1
+                              : () {
+                                  updateOrderStatus(widget
+                                      .orderId); // Gọi cập nhật trạng thái
+                                },
+                          child: Text('Cập nhật'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor:
+                                Colors.grey, // Màu khi bị vô hiệu hóa
+                            disabledForegroundColor: Colors.white70,
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: (order?['state'] == 4 ||
+                                  order?['state'] == -1)
+                              ? null // Vô hiệu hóa nếu state là 4 hoặc -1
+                              : () {
+                                  cancelOrder(widget.orderId); // Gọi huỷ đơn
+                                },
+                          child: Text('Hủy đơn'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                          ),
+                        )
+                      ],
+                    )
+                  ],
+                ),
+              )),
           ...(order!['lineItem'] as List).map((item) {
             return Card(
               elevation: 2,
